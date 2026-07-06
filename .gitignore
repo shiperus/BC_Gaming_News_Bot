@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+bc_bot.db
+bc_bot.log*
+.claude/
