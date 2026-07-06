@@ -37,7 +37,9 @@ def run_cycle(config: Config, store: Store) -> None:
             f"Confidence: x{item.confidence}"
         )
         print()
-        store.record_posted(item.title, item.link, "+".join(sorted(item.sources)))
+        store.record_posted(
+            item.title, item.link, "+".join(sorted(item.sources)), item.confidence
+        )
 
     removed = store.cleanup_old(config.retention_days)
     print(

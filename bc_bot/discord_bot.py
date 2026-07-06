@@ -60,7 +60,9 @@ class BcGamingBot(discord.Client):
 
         for item in to_post:
             await self._post_item(channel, item)
-            self.store.record_posted(item.title, item.link, "+".join(sorted(item.sources)))
+            self.store.record_posted(
+                item.title, item.link, "+".join(sorted(item.sources)), item.confidence
+            )
 
         removed = self.store.cleanup_old(self.config.retention_days)
         logger.info(
@@ -68,8 +70,4 @@ class BcGamingBot(discord.Client):
         )
 
     async def _post_item(self, channel: discord.abc.Messageable, item: TrendingItem) -> None:
-        embed = discord.Embed(title=item.title, url=item.link, color=discord.Color.blurple())
-        embed.add_field(name="Origin", value=item.origin, inline=True)
-        embed.add_field(name="Sources", value=", ".join(sorted(item.sources)), inline=True)
-        embed.set_footer(text=f"Confidence x{item.confidence}")
-        await channel.send(embed=embed)
+        await channel.send(f"{item.title}\n{item.link}")

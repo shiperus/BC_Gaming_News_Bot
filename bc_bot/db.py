@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS posted_items (
     title TEXT NOT NULL,
     url TEXT NOT NULL,
     source TEXT NOT NULL,
+    confidence INTEGER NOT NULL DEFAULT 1,
     posted_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_posted_at ON posted_items (posted_at);
@@ -57,11 +58,12 @@ class Store:
                 return True
         return False
 
-    def record_posted(self, title: str, url: str, source: str) -> None:
+    def record_posted(self, title: str, url: str, source: str, confidence: int) -> None:
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO posted_items (title, url, source, posted_at) VALUES (?, ?, ?, ?)",
-                (title, url, source, datetime.now(timezone.utc).isoformat()),
+                "INSERT INTO posted_items (title, url, source, confidence, posted_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (title, url, source, confidence, datetime.now(timezone.utc).isoformat()),
             )
 
     def cleanup_old(self, retention_days: int) -> int:

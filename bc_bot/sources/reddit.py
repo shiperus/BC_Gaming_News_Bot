@@ -42,24 +42,52 @@ _DATE_TOKEN_PATTERN = re.compile(
 )
 _THREAD_HINT_PATTERN = re.compile(r"\b(thread|discussion|megathread)\b", re.IGNORECASE)
 
+# Many subreddits alliterate their recurring weekly threads with the day they run on
+# instead of saying "weekly" (e.g. "Making Friends Monday! Share your game tags here!",
+# "Self Promotion Saturday! ..."). The day name immediately followed by "!" is the
+# banner-style opener these threads use; real news headlines don't punctuate that way,
+# so it's a safe signal distinct from titles that merely mention a day in passing
+# (e.g. "Nintendo Direct announced for Wednesday").
+_DAY_OF_WEEK_PATTERN = re.compile(
+    r"\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b\s*!",
+    re.IGNORECASE,
+)
+
+
+# Direct image/video hosts and file extensions Reddit posts commonly link to (memes,
+# screenshots, clips) rather than a news article. These carry no headline of their own
+# to corroborate or enrich, so they're not useful as "trending news" candidates.
+_IMAGE_HOST_PATTERN = re.compile(
+    r"^https?://(i\.redd\.it|i\.imgur\.com|preview\.redd\.it|v\.redd\.it)/", re.IGNORECASE
+)
+_IMAGE_EXTENSION_PATTERN = re.compile(
+    r"\.(jpe?g|png|gif|gifv|webp|bmp|mp4)(\?.*)?$", re.IGNORECASE
+)
+
 
 def _extract_submitted_url(summary: str) -> str | None:
     match = _SUBMITTED_LINK_PATTERN.search(summary)
     return unescape(match.group(1)) if match else None
 
 
+def _is_image_link(url: str) -> bool:
+    return bool(_IMAGE_HOST_PATTERN.search(url) or _IMAGE_EXTENSION_PATTERN.search(url))
+
+
 def _is_meta_thread(title: str, is_self_post: bool) -> bool:
     if any(pattern.search(title) for pattern in _META_THREAD_PATTERNS):
         return True
 
+    if not is_self_post:
+        return False
+
     # Recurring megathreads are almost always self-posts with a date baked into the
     # title (e.g. "Discussion Thread - Week Beginning 06/29/26"); this catches new
     # subreddits' own wordings without needing a hand-tuned pattern for each one.
-    return bool(
-        is_self_post
-        and _THREAD_HINT_PATTERN.search(title)
-        and _DATE_TOKEN_PATTERN.search(title)
-    )
+    if _THREAD_HINT_PATTERN.search(title) and _DATE_TOKEN_PATTERN.search(title):
+        return True
+
+    return bool(_DAY_OF_WEEK_PATTERN.search(title))
 
 
 def fetch_trending(config: Config) -> list[TrendingItem]:
@@ -83,18 +111,28 @@ def fetch_trending(config: Config) -> list[TrendingItem]:
                 continue
 
             skipped_meta_threads = 0
+            skipped_image_links = 0
             weight = config.subreddit_weights.get(subreddit_name, 1.0)
             for rank, entry in enumerate(feed.entries[:POSTS_PER_SUBREDDIT]):
                 title = entry.get("title", "")
+                comments_url = entry.get("link", "")
                 submitted_url = _extract_submitted_url(entry.get("summary", ""))
-                if _is_meta_thread(title, is_self_post=submitted_url is None):
+                # Self-posts still get a "[link]" anchor in the RSS summary, but it just
+                # points back at the post's own comments page rather than an external
+                # article, so that case must still count as a self-post.
+                is_self_post = submitted_url is None or submitted_url.rstrip("/") == comments_url.rstrip("/")
+                if _is_meta_thread(title, is_self_post=is_self_post):
                     skipped_meta_threads += 1
+                    continue
+
+                if submitted_url and not is_self_post and _is_image_link(submitted_url):
+                    skipped_image_links += 1
                     continue
 
                 items.append(
                     TrendingItem(
                         title=title,
-                        url=submitted_url or entry.get("link", ""),
+                        url=submitted_url or comments_url,
                         source="reddit",
                         engagement=(POSTS_PER_SUBREDDIT - rank) * weight,
                         origin=f"r/{subreddit_name}",
@@ -106,6 +144,12 @@ def fetch_trending(config: Config) -> list[TrendingItem]:
                     "r/%s: skipped %d recurring meta-thread(s)",
                     subreddit_name,
                     skipped_meta_threads,
+                )
+            if skipped_image_links:
+                logger.info(
+                    "r/%s: skipped %d image/video link post(s)",
+                    subreddit_name,
+                    skipped_image_links,
                 )
         except Exception:
             logger.exception("Failed to fetch trending posts from r/%s", subreddit_name)
