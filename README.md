@@ -1,8 +1,15 @@
 # BC Gaming Bot
 
-Discord bot that checks Reddit every few hours for trending gaming content,
-matches trending topics to articles from gaming news RSS feeds, and posts a
-curated, deduplicated summary to a Discord channel.
+A self-hosted Discord bot that keeps a channel up to date with trending
+gaming news — without you having to scroll Reddit yourself.
+
+Every few hours it pulls hot posts from a set of gaming subreddits (via
+Reddit's public RSS feeds, so no API key is needed), merges duplicate
+coverage of the same story, matches each story to a proper article from
+gaming news outlets (IGN, Polygon, PC Gamer, etc.), and posts the top
+handful to a Discord channel as embeds. A local SQLite database remembers
+what was already posted, so the same story never shows up twice — even if
+it's reworded. Lightweight enough to run 24/7 on a Raspberry Pi.
 
 ## Setup
 
