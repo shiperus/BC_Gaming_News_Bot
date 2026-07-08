@@ -23,14 +23,13 @@ def run_cycle(config: Config, store: Store) -> None:
     aggregator.enrich_with_articles(consolidated, articles)
     ranked = aggregator.rank(consolidated)
 
-    fresh = [
-        item for item in ranked if not store.is_duplicate(item.title, config.retention_days)
-    ]
+    recent_posts = store.recent_posts(config.retention_days)
+    fresh = aggregator.select_fresh(ranked, recent_posts)
     to_post = fresh[: config.posts_per_cycle]
 
     print(f"=== DRY RUN: {len(to_post)} item(s) would be posted (of {len(ranked)} candidates) ===\n")
     for i, item in enumerate(to_post, 1):
-        print(f"{i}. {item.title}")
+        print(f"{i}. {item.display_title}")
         print(f"   Link: {item.link}")
         print(
             f"   Origin: {item.origin}  Sources: {', '.join(sorted(item.sources))}  "
@@ -47,6 +46,7 @@ def run_cycle(config: Config, store: Store) -> None:
             reddit_url=item.url,
             article_url=item.article_url,
             article_title=item.article_title,
+            opencritic_stats=item.opencritic_stats,
         )
 
     removed = store.cleanup_old(config.retention_days)

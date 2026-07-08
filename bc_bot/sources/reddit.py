@@ -74,11 +74,15 @@ _REVIEW_THREAD_PATTERN = re.compile(r"\breview(s)?\s+(mega)?thread\b", re.IGNORE
 _OPENCRITIC_LINK_PATTERN = re.compile(
     r'href="(https://opencritic\.com/game/[^"]+)">([^<]+)</a>'
 )
-# The aggregator link's own text reads "OpenCritic - 88 average - 95% recommended -
-# 58 reviews"; pull out the numbers to reformat into the title rather than posting
-# that phrasing verbatim.
+# Each subreddit's review-thread template words the OpenCritic link text a bit
+# differently -- e.g. r/Games: "OpenCritic - 88 average - 95% recommended - 58
+# reviews"; r/gaming: "OpenCritic: 88 Average - 96% Recommend" (no review count).
+# Percent-recommended and review count are optional so both (and other minor
+# variants) still extract whatever numbers are actually present.
 _OPENCRITIC_STATS_PATTERN = re.compile(
-    r"(?P<avg>\d+)\s*average\s*-\s*(?P<pct>\d+)%\s*recommended\s*-\s*(?P<count>\d+)\s*reviews",
+    r"(?P<avg>\d+)\s*average"
+    r"(?:\s*-\s*(?P<pct>\d+)%\s*recommend\w*)?"
+    r"(?:\s*-\s*(?P<count>\d+)\s*reviews)?",
     re.IGNORECASE,
 )
 
@@ -94,9 +98,8 @@ def _is_image_link(url: str) -> bool:
 
 def _extract_opencritic(summary: str) -> tuple[str, str | None] | None:
     """Return (url, formatted stats) for a review thread's OpenCritic aggregator link,
-    or None if the post body has no such section. Stats are None if the link text
-    doesn't match the expected "N average - N% recommended - N reviews" phrasing
-    (e.g. too few reviews for OpenCritic to score yet)."""
+    or None if the post body has no such section. Stats are None if the link text has
+    no "N average" score at all (e.g. too few reviews for OpenCritic to score yet)."""
     match = _OPENCRITIC_LINK_PATTERN.search(summary)
     if match is None:
         return None
@@ -106,11 +109,12 @@ def _extract_opencritic(summary: str) -> tuple[str, str | None] | None:
     if stats_match is None:
         return url, None
 
-    stats = (
-        f"OpenCritic {stats_match['avg']} · "
-        f"{stats_match['pct']}% Recommended · {stats_match['count']} Reviews"
-    )
-    return url, stats
+    parts = [f"OpenCritic {stats_match['avg']}"]
+    if stats_match["pct"]:
+        parts.append(f"{stats_match['pct']}% Recommended")
+    if stats_match["count"]:
+        parts.append(f"{stats_match['count']} Reviews")
+    return url, " · ".join(parts)
 
 
 def _is_meta_thread(title: str, is_self_post: bool) -> bool:
@@ -169,11 +173,11 @@ def fetch_trending(config: Config) -> list[TrendingItem]:
                     continue
 
                 is_review_thread = bool(_REVIEW_THREAD_PATTERN.search(title))
+                opencritic_stats = None
                 if is_review_thread:
                     opencritic = _extract_opencritic(entry.get("summary", ""))
                     item_url = opencritic[0] if opencritic else comments_url
-                    if opencritic and opencritic[1]:
-                        title = f"{title} — {opencritic[1]}"
+                    opencritic_stats = opencritic[1] if opencritic else None
                 else:
                     item_url = submitted_url or comments_url
 
@@ -185,6 +189,7 @@ def fetch_trending(config: Config) -> list[TrendingItem]:
                         engagement=(POSTS_PER_SUBREDDIT - rank) * weight,
                         origin=f"r/{subreddit_name}",
                         skip_enrichment=is_review_thread,
+                        opencritic_stats=opencritic_stats,
                     )
                 )
 

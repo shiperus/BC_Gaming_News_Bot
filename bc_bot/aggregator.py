@@ -9,6 +9,11 @@ from bc_bot.sources import rss
 
 CONSOLIDATION_THRESHOLD = 80
 
+# Matches CONSOLIDATION_THRESHOLD so a reworded restatement of an already-posted
+# story is caught here just as reliably as duplicate titles are merged within a
+# single cycle.
+DUPLICATE_THRESHOLD = 80
+
 # Phrases that show up in titles announcing, revealing, or confirming a new game --
 # as opposed to discounts, patch notes, esports results, memes, etc.
 _ANNOUNCEMENT_PATTERNS = [
@@ -95,3 +100,32 @@ def boost_announcements(items: list[TrendingItem]) -> None:
 
 def rank(items: list[TrendingItem]) -> list[TrendingItem]:
     return sorted(items, key=lambda i: (i.confidence, i.engagement), reverse=True)
+
+
+def select_fresh(
+    items: list[TrendingItem], recent_posts: list[tuple[str, str]]
+) -> list[TrendingItem]:
+    """Filter out items that duplicate an already-posted story, by exact link or
+    fuzzy title match. Checks both prior-cycle history (recent_posts, from the DB)
+    and items already kept earlier in this same call, so near-duplicates that slip
+    past consolidate() -- e.g. differently-phrased posts of the same story from
+    different subreddits -- can't both get posted in one cycle."""
+    seen_titles = [title for title, _ in recent_posts]
+    seen_urls = {url for _, url in recent_posts}
+
+    fresh: list[TrendingItem] = []
+    for item in items:
+        if item.link in seen_urls:
+            continue
+        if any(
+            fuzz.token_sort_ratio(item.title, title, processor=utils.default_process)
+            >= DUPLICATE_THRESHOLD
+            for title in seen_titles
+        ):
+            continue
+
+        fresh.append(item)
+        seen_titles.append(item.title)
+        seen_urls.add(item.link)
+
+    return fresh

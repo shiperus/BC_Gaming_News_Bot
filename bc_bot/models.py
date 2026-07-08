@@ -15,6 +15,7 @@ class TrendingItem:
     article_url: str | None = None
     article_title: str | None = None
     skip_enrichment: bool = False
+    opencritic_stats: str | None = None
 
     def __post_init__(self) -> None:
         if not self.sources:
@@ -23,6 +24,15 @@ class TrendingItem:
     @property
     def link(self) -> str:
         return self.article_url or self.url
+
+    @property
+    def display_title(self) -> str:
+        """Title as it should be posted -- title stays unadorned everywhere else
+        (consolidate(), select_fresh()) so fuzzy matching isn't thrown off by a
+        suffix that may or may not be present on a given duplicate."""
+        if self.opencritic_stats:
+            return f"{self.title} — {self.opencritic_stats}"
+        return self.title
 
 
 @dataclass

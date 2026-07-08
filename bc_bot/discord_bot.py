@@ -47,11 +47,8 @@ class BcGamingBot(discord.Client):
         aggregator.enrich_with_articles(consolidated, articles)
         ranked = aggregator.rank(consolidated)
 
-        fresh = [
-            item
-            for item in ranked
-            if not self.store.is_duplicate(item.title, self.config.retention_days)
-        ]
+        recent_posts = self.store.recent_posts(self.config.retention_days)
+        fresh = aggregator.select_fresh(ranked, recent_posts)
         to_post = fresh[: self.config.posts_per_cycle]
 
         channel = self.get_channel(self.config.discord_channel_id)
@@ -70,6 +67,7 @@ class BcGamingBot(discord.Client):
                 reddit_url=item.url,
                 article_url=item.article_url,
                 article_title=item.article_title,
+                opencritic_stats=item.opencritic_stats,
             )
 
         removed = self.store.cleanup_old(self.config.retention_days)
@@ -78,4 +76,4 @@ class BcGamingBot(discord.Client):
         )
 
     async def _post_item(self, channel: discord.abc.Messageable, item: TrendingItem) -> None:
-        await channel.send(f"{item.title}\n{item.link}")
+        await channel.send(f"{item.display_title}\n{item.link}")

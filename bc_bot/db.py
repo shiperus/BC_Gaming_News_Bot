@@ -6,8 +6,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator
 
-from rapidfuzz import fuzz, utils
-
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS posted_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,12 +30,8 @@ _MIGRATION_COLUMNS = {
     "reddit_url": "TEXT",
     "article_url": "TEXT",
     "article_title": "TEXT",
+    "opencritic_stats": "TEXT",
 }
-
-# Matches aggregator.CONSOLIDATION_THRESHOLD so a reworded restatement of an
-# already-posted story is caught here just as reliably as duplicate titles are
-# merged within a single cycle.
-DUPLICATE_THRESHOLD = 80
 
 
 class Store:
@@ -62,22 +56,16 @@ class Store:
         finally:
             conn.close()
 
-    def recent_titles(self, retention_days: int) -> list[str]:
+    def recent_posts(self, retention_days: int) -> list[tuple[str, str]]:
+        """Return (title, url) pairs posted within the retention window, for the
+        caller to dedup fresh candidates against -- fetched once per cycle rather
+        than re-querying per candidate."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT title FROM posted_items WHERE posted_at >= ?", (cutoff,)
+                "SELECT title, url FROM posted_items WHERE posted_at >= ?", (cutoff,)
             ).fetchall()
-        return [row[0] for row in rows]
-
-    def is_duplicate(self, title: str, retention_days: int) -> bool:
-        for existing in self.recent_titles(retention_days):
-            if (
-                fuzz.token_sort_ratio(title, existing, processor=utils.default_process)
-                >= DUPLICATE_THRESHOLD
-            ):
-                return True
-        return False
+        return [(row[0], row[1]) for row in rows]
 
     def record_posted(
         self,
@@ -91,13 +79,14 @@ class Store:
         reddit_url: str | None = None,
         article_url: str | None = None,
         article_title: str | None = None,
+        opencritic_stats: str | None = None,
     ) -> None:
         with self._connect() as conn:
             conn.execute(
                 "INSERT INTO posted_items "
                 "(title, url, source, confidence, posted_at, origin, engagement, "
-                "reddit_url, article_url, article_title) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "reddit_url, article_url, article_title, opencritic_stats) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     title,
                     url,
@@ -109,6 +98,7 @@ class Store:
                     reddit_url,
                     article_url,
                     article_title,
+                    opencritic_stats,
                 ),
             )
 
