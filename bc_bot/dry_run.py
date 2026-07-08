@@ -38,7 +38,15 @@ def run_cycle(config: Config, store: Store) -> None:
         )
         print()
         store.record_posted(
-            item.title, item.link, "+".join(sorted(item.sources)), item.confidence
+            item.title,
+            item.link,
+            "+".join(sorted(item.sources)),
+            item.confidence,
+            origin=item.origin,
+            engagement=item.engagement,
+            reddit_url=item.url,
+            article_url=item.article_url,
+            article_title=item.article_title,
         )
 
     removed = store.cleanup_old(config.retention_days)

@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 ARTICLES_PER_FEED = 30
 MATCH_THRESHOLD = 62
+SORT_MATCH_THRESHOLD = 62
 
 
 def fetch_articles(config: Config) -> list[Article]:
@@ -45,8 +46,21 @@ def find_best_match(topic_title: str, articles: list[Article]) -> Article | None
     if result is None:
         return None
 
-    _match_title, score, index = result
+    match_title, score, index = result
     if score < MATCH_THRESHOLD:
+        return None
+
+    # token_set_ratio rewards containment: a short topic title whose tokens are a
+    # near-subset of a longer article title scores deceptively high even when the
+    # article covers a different specific story about the same subject (e.g. a
+    # review matched to a leak headline). token_sort_ratio penalizes leftover
+    # unmatched content on both sides, so require it too before trusting the match
+    # -- a missed match just falls back to the original link, so it's safe to be
+    # conservative here.
+    sort_score = fuzz.token_sort_ratio(
+        topic_title, match_title, processor=utils.default_process
+    )
+    if sort_score < SORT_MATCH_THRESHOLD:
         return None
 
     return articles[index]

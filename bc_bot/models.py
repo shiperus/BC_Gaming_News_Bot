@@ -13,6 +13,7 @@ class TrendingItem:
     sources: set[str] = field(default_factory=set)
     confidence: int = 1
     article_url: str | None = None
+    article_title: str | None = None
 
     def __post_init__(self) -> None:
         if not self.sources:

@@ -61,7 +61,15 @@ class BcGamingBot(discord.Client):
         for item in to_post:
             await self._post_item(channel, item)
             self.store.record_posted(
-                item.title, item.link, "+".join(sorted(item.sources)), item.confidence
+                item.title,
+                item.link,
+                "+".join(sorted(item.sources)),
+                item.confidence,
+                origin=item.origin,
+                engagement=item.engagement,
+                reddit_url=item.url,
+                article_url=item.article_url,
+                article_title=item.article_title,
             )
 
         removed = self.store.cleanup_old(self.config.retention_days)

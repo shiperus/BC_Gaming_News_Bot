@@ -20,6 +20,20 @@ CREATE TABLE IF NOT EXISTS posted_items (
 CREATE INDEX IF NOT EXISTS idx_posted_at ON posted_items (posted_at);
 """
 
+# Debugging columns added after the initial release, capturing the full picture of
+# how an item was assembled (which subreddit, its raw engagement score, the
+# Reddit-submitted URL vs. whichever RSS article got fuzzy-matched to it) -- e.g. the
+# title/link mismatches that MATCH_THRESHOLD tuning in sources/rss.py needs to
+# diagnose. Applied via ALTER TABLE so an already-deployed DB (e.g. on the Pi) picks
+# them up without a manual migration; all columns are nullable so old rows stay valid.
+_MIGRATION_COLUMNS = {
+    "origin": "TEXT",
+    "engagement": "REAL",
+    "reddit_url": "TEXT",
+    "article_url": "TEXT",
+    "article_title": "TEXT",
+}
+
 # Matches aggregator.CONSOLIDATION_THRESHOLD so a reworded restatement of an
 # already-posted story is caught here just as reliably as duplicate titles are
 # merged within a single cycle.
@@ -31,6 +45,13 @@ class Store:
         self._db_path = db_path
         with self._connect() as conn:
             conn.executescript(SCHEMA)
+            self._migrate(conn)
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(posted_items)")}
+        for column, column_type in _MIGRATION_COLUMNS.items():
+            if column not in existing:
+                conn.execute(f"ALTER TABLE posted_items ADD COLUMN {column} {column_type}")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -58,12 +79,37 @@ class Store:
                 return True
         return False
 
-    def record_posted(self, title: str, url: str, source: str, confidence: int) -> None:
+    def record_posted(
+        self,
+        title: str,
+        url: str,
+        source: str,
+        confidence: int,
+        *,
+        origin: str | None = None,
+        engagement: float | None = None,
+        reddit_url: str | None = None,
+        article_url: str | None = None,
+        article_title: str | None = None,
+    ) -> None:
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO posted_items (title, url, source, confidence, posted_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (title, url, source, confidence, datetime.now(timezone.utc).isoformat()),
+                "INSERT INTO posted_items "
+                "(title, url, source, confidence, posted_at, origin, engagement, "
+                "reddit_url, article_url, article_title) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    title,
+                    url,
+                    source,
+                    confidence,
+                    datetime.now(timezone.utc).isoformat(),
+                    origin,
+                    engagement,
+                    reddit_url,
+                    article_url,
+                    article_title,
+                ),
             )
 
     def cleanup_old(self, retention_days: int) -> int:
