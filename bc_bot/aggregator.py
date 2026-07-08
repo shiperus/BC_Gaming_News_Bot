@@ -72,6 +72,8 @@ def consolidate(items: list[TrendingItem]) -> list[TrendingItem]:
 def enrich_with_articles(items: list[TrendingItem], articles: list[Article]) -> None:
     """Attach a matching RSS article to each item, falling back to its original link."""
     for item in items:
+        if item.skip_enrichment:
+            continue
         match = rss.find_best_match(item.title, articles)
         if match:
             item.article_url = match.link

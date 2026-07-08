@@ -14,6 +14,7 @@ class TrendingItem:
     confidence: int = 1
     article_url: str | None = None
     article_title: str | None = None
+    skip_enrichment: bool = False
 
     def __post_init__(self) -> None:
         if not self.sources:
